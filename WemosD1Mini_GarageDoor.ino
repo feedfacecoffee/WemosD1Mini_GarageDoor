@@ -1,12 +1,13 @@
 #include<ESP8266WiFi.h>
-#include"PubSubClient.h"
+#include"PubSubClient.h" //Version 2.8
 #include<ArduinoOTA.h>
 #include<Wire.h>
 
+#define _WLAN_HOST "WemosGarage"
 #define _WLAN_SSID "MySSID"
 #define _WLAN_PASS "MyPassword"
 
-#define _MQTT_BROKER "10.0.1.250"
+#define _MQTT_BROKER "MyMQTTIP"
 #define _MQTT_PORT 1883
 #define _MQTT_USER "MyMQTTUser"
 #define _MQTT_PASS "MyMQTTPassword"
@@ -48,9 +49,10 @@ void setup_wifi() {
   Serial.print("Connecting to ");
   Serial.println(ssid);
 
+  WiFi.hostname("WemosGarage");
   WiFi.begin(ssid, password);
 
-  while (WiFi.status()!= WL_CONNECTED) {
+  while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
@@ -64,16 +66,16 @@ void setup_wifi() {
 void reconnect() {
   while (!mqttClient.connected()) {
     Serial.print("Attempting MQTT connection...");
-    if (mqttClient.connect("GarageDoor", "/security/garage/will", 1, 1, "Disconnected")) {
+    if (mqttClient.connect("GarageDoor", _MQTT_USER, _MQTT_PASS, "security/garage/LWT", 1, 1, "Disconnected")) {
       Serial.println("Connected");
-      mqttClient.publish("/securiy/garage/will", "Connected", true);
-      mqttClient.subscribe("/security/garage/set", 1);
+      mqttClient.publish("security/garage/LWT", "Connected", true);
+      mqttClient.subscribe("security/garage/set", 1);
     } else {
       Serial.print("failed, rc=");
       Serial.print(mqttClient.state());
       Serial.println(", trying again in 5 seconds");
       delay(5000);
-    } 
+    }
   }
   //force an update:
   publishState();
@@ -81,7 +83,7 @@ void reconnect() {
 
 void setup_OTA()
 {
-    // No authentication by default
+  // No authentication by default
   // ArduinoOTA.setPassword((const char *)"123");
 
   ArduinoOTA.onStart([]() {
@@ -105,16 +107,16 @@ void setup_OTA()
 }
 
 void setup() {
-  
+
   pinMode(switchPin, INPUT_PULLUP);
   pinMode(relayPin, OUTPUT);
-  
+
   Serial.begin(9600);
   setup_wifi();
   setup_OTA();
   mqttClient.setServer(_MQTT_BROKER, _MQTT_PORT);
   mqttClient.setCallback(callback);
-  
+
 }
 
 void loop() {
@@ -131,7 +133,7 @@ void loop() {
   ArduinoOTA.handle();
 
   if ((currentMillis - sampleTimer) > 100UL) {
-    for (int pin=0; pin<=8; pin++) {    
+    for (int pin = 0; pin <= 8; pin++) {
       //begin debounce
       input = digitalRead(switchPin);
       if (input == 0) {
@@ -158,23 +160,15 @@ void loop() {
     }
     sampleTimer = currentMillis;
   }
-  
-}
 
-String zones[9] = {"Front Door", "Garage Door", "Deck Door","Basement Door", "Master", "Family & Kitchen", "Dining", "Basement", "Inside Basement Door"};
+}
 
 void publishState()
 {
   int rc = -1;
-  String zone = "/security/garage";
-  String message;
-  
-  if (switchState == LOW) {
-    message = "0 - Secure, Garage, Garage Door";
-  }
-  else {
-    message = "1 - Breached, Garage, Garage Door";
-  }
+  String zone = "security/garage";
+  String message = "{\"value\":" + String(switchState) + ", \"zoneName\":\"Garage Door\"}";
+
   rc = mqttClient.publish(zone.c_str(), message.c_str(), true);
 }
 
@@ -187,7 +181,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
   Serial.println();
 
-  if ((char)payload[0] == '1' && (strcmp(topic, "/security/garage/set") == 0)) {
+  if ((char)payload[0] == '1' && (strcmp(topic, "security/garage/set") == 0)) {
     Serial.println("Changing Garage State");
     digitalWrite(relayPin, HIGH);
     delay(500);
@@ -195,4 +189,3 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
 
 }
-
